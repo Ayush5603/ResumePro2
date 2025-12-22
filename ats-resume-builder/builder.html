@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Build Resume</title>
+  <link rel="stylesheet" href="builder-style.css">
+</head>
+
+<body>
+<header class="navbar">
+    <div class="logo">Ayush Dhamane</div>
+    <nav>
+      <a href="index.html#home">Home</a>
+      <a href="index.html#resume">Resume Builder</a>
+      <a href="ats-checker.html">ATS Checker</a>
+    </nav>
+  </header>
+<br><br><br><br>
+  <div class="container">
+
+    <h2>Personal Information</h2>
+    <input id="name" placeholder="Full Name">
+    <input id="email" placeholder="Email">
+    <input id="phone" placeholder="Phone Number">
+    <input id="linkedin" placeholder="LinkedIn URL">
+    <input id="github" placeholder="GitHub URL">
+    <input id="location" placeholder="City, Country">
+
+    <h2>Professional Summary</h2>
+    <textarea id="summary" placeholder="Write a short professional summary..."></textarea>
+
+    <h2>Skills</h2>
+    <textarea id="skills" placeholder="Skill1, Skill2, Skill3"></textarea>
+
+    <h2>Work Experience</h2>
+    <div id="experience-section"></div>
+    <button class="add-btn" onclick="addExperience()">+ Add Experience</button>
+
+    <h2>Projects</h2>
+    <div id="project-section"></div>
+    <button class="add-btn" onclick="addProject()">+ Add Project</button>
+
+    <h2>Education</h2>
+    <div id="education-section"></div>
+    <button class="add-btn" onclick="addEducation()">+ Add Education</button>
+
+    <h2>Certifications</h2>
+    <textarea id="certifications" placeholder="Certification1, Certification2"></textarea>
+
+    <h2>Languages</h2>
+    <textarea id="languages" placeholder="English, Hindi"></textarea>
+
+    <button onclick="generatePDF()" class="btn">Download ATS Resume PDF</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
