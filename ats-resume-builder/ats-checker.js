@@ -1,10 +1,10 @@
-// ===== LOAD PDF.JS =====
+// ===== Load PDF.js =====
 const pdfScript = document.createElement("script");
 pdfScript.src =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
 document.head.appendChild(pdfScript);
 
-// ===== EXTRACT PDF TEXT =====
+// ===== Extract PDF Text =====
 async function extractTextFromPDF(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -18,8 +18,9 @@ async function extractTextFromPDF(file) {
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          text += content.items.map((it) => it.str).join(" ") + "\n";
+          text += content.items.map(i => i.str).join(" ") + "\n";
         }
+
         resolve(text);
       } catch {
         resolve("");
@@ -30,23 +31,22 @@ async function extractTextFromPDF(file) {
   });
 }
 
-// ===== ATS BUTTON =====
+// ===== Button Handler =====
 document.querySelector(".ats-btn").addEventListener("click", async () => {
   const file = document.getElementById("resumeFile").files[0];
-  if (!file) {
-    alert("Upload resume PDF");
-    return;
-  }
+  if (!file) return alert("Upload a resume");
 
   const resumeText = await extractTextFromPDF(file);
-  if (!resumeText || resumeText.length < 100) {
-    alert("Could not read resume text");
+  console.log("Extracted preview:", resumeText.slice(0, 300));
+
+  if (resumeText.trim().length < 100) {
+    alert("Resume text unreadable");
     return;
   }
 
   let response;
   try {
-    response = await fetch(`${window.location.origin}/api/ats`, {
+    response = await fetch("/api/ats", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resumeText })
@@ -57,13 +57,15 @@ document.querySelector(".ats-btn").addEventListener("click", async () => {
   }
 
   if (!response.ok) {
+    console.error("API ERROR:", response.status);
     alert("ATS server error");
     return;
   }
 
   const data = await response.json();
+  console.log("ATS RESULT:", data);
 
-  // ===== UI UPDATE =====
+  // ===== UI =====
   const scoreBox = document.querySelector(".score");
   const list = document.querySelector(".suggestion-list");
 
@@ -73,13 +75,9 @@ document.querySelector(".ats-btn").addEventListener("click", async () => {
     data.ats_score >= 70 ? "orange" : "red";
 
   list.innerHTML = "";
-  if (Array.isArray(data.suggestions) && data.suggestions.length) {
-    data.suggestions.forEach(s => {
-      const li = document.createElement("li");
-      li.textContent = s;
-      list.appendChild(li);
-    });
-  } else {
-    list.innerHTML = "<li>No suggestions</li>";
-  }
+  (data.suggestions || ["No suggestions"]).forEach(s => {
+    const li = document.createElement("li");
+    li.textContent = s;
+    list.appendChild(li);
+  });
 });
