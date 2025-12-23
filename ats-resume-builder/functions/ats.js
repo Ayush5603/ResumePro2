@@ -1,27 +1,26 @@
-export default {
-  async fetch(request, env) {
-    // Allow only POST requests
-    if (request.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405 });
+export async function onRequestPost({ request, env }) {
+  try {
+    // Read request body
+    const body = await request.json();
+    const resumeText = body.resumeText;
+
+    if (!resumeText || resumeText.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Resume text is empty" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
     }
 
-    try {
-      // Read request body
-      const body = await request.json();
-      const resumeText = body.resumeText;
+    // Gemini API Key from Cloudflare Environment Variable
+    const apiKey = env.GEMINI_API_KEY;
 
-      if (!resumeText || resumeText.trim().length < 100) {
-        return new Response(
-          JSON.stringify({ error: "Resume text is too short or empty" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
+    const prompt = `
+You are an ATS (Applicant Tracking System) resume analyzer.
 
-      // Prompt for Gemini
-      const prompt = `
-You are an Applicant Tracking System (ATS).
-
-Analyze the resume and return ONLY valid JSON in this format:
+Analyze the resume text below and respond ONLY with valid JSON in this format:
 
 {
   "ats_score": number,
@@ -31,55 +30,56 @@ Analyze the resume and return ONLY valid JSON in this format:
 }
 
 Rules:
-- Score from 0 to 100
-- Give suggestions ONLY if score < 90
-- Do NOT add any explanation text
-- Do NOT wrap JSON in markdown
+- ats_score must be between 0 and 100
+- strengths, weaknesses, suggestions must be arrays
+- If score >= 90, suggestions array can be empty
 
-Resume:
+Resume Text:
 ${resumeText}
 `;
 
-      // Call Gemini API
-      const geminiResponse = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" +
-          env.GEMINI_API_KEY,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [{ text: prompt }]
-              }
-            ]
-          })
-        }
-      );
-
-      const geminiData = await geminiResponse.json();
-
-      const rawText =
-        geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-      // Return Gemini response directly
-      return new Response(rawText, {
-        status: 200,
+    // Call Gemini API
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
         headers: {
           "Content-Type": "application/json"
-        }
-      });
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: prompt }]
+            }
+          ]
+        })
+      }
+    );
 
-    } catch (error) {
-      return new Response(
-        JSON.stringify({
-          error: "ATS analysis failed",
-          details: error.message
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
+    const geminiData = await geminiResponse.json();
+
+    // Extract text response safely
+    let text =
+      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+    // Remove markdown if Gemini adds it
+    text = text.replace(/```json|```/g, "").trim();
+
+    return new Response(text, {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+
+  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        error: "Server error",
+        message: error.message
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
   }
-};
+}
