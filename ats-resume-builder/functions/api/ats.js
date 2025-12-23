@@ -1,8 +1,6 @@
 export async function onRequestPost({ request, env }) {
   try {
-    // Parse request body
-    const body = await request.json();
-    const resumeText = body.resumeText;
+    const { resumeText } = await request.json();
 
     if (!resumeText || resumeText.trim().length < 100) {
       return new Response(
@@ -14,12 +12,13 @@ export async function onRequestPost({ request, env }) {
       );
     }
 
-    // Gemini prompt
     const prompt = `
 You are an Applicant Tracking System (ATS).
 
-Analyze the resume and return ONLY valid JSON in this format:
+Analyze the resume text below and return ONLY valid JSON
+(no markdown, no explanation, no extra text).
 
+JSON format:
 {
   "ats_score": number,
   "strengths": ["..."],
@@ -28,18 +27,15 @@ Analyze the resume and return ONLY valid JSON in this format:
 }
 
 Rules:
-- Score must be between 0 and 100
+- Score must be 0–100
 - Suggestions ONLY if score < 90
-- Do NOT add explanations
-- Do NOT wrap JSON in markdown
 
 Resume:
 ${resumeText}
 `;
 
-    // Call Gemini API
     const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" +
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
         env.GEMINI_API_KEY,
       {
         method: "POST",
@@ -56,23 +52,27 @@ ${resumeText}
       }
     );
 
-    const geminiData = await geminiResponse.json();
-
-    const resultText =
-      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!resultText) {
+    if (!geminiResponse.ok) {
+      const err = await geminiResponse.text();
       return new Response(
-        JSON.stringify({ error: "No response from Gemini" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        }
+        JSON.stringify({ error: "Gemini API error", details: err }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Return Gemini JSON directly
-    return new Response(resultText, {
+    const geminiData = await geminiResponse.json();
+
+    const rawText =
+      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!rawText) {
+      return new Response(
+        JSON.stringify({ error: "Empty response from Gemini" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(rawText, {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
@@ -83,10 +83,7 @@ ${resumeText}
         error: "ATS analysis failed",
         details: error.message
       }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      }
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
