@@ -1,21 +1,46 @@
-export async function onRequestPost({ request, env }) {
+export async function onRequest(context) {
+  const { request, env } = context;
+
+  // ✅ Handle CORS preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    });
+  }
+
+  // ❌ Allow ONLY POST
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: {
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
+  }
+
   try {
-    // Parse body
     const { resumeText } = await request.json();
 
     if (!resumeText || resumeText.trim().length < 100) {
       return new Response(
-        JSON.stringify({ error: "Resume text too short or empty" }),
+        JSON.stringify({ error: "Resume text too short" }),
         {
           status: 400,
-          headers: { "Content-Type": "application/json" }
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          }
         }
       );
     }
 
-    // Gemini prompt
     const prompt = `
-You are an Applicant Tracking System (ATS).
+You are an ATS (Applicant Tracking System).
 
 Return ONLY valid JSON in this format:
 
@@ -27,65 +52,47 @@ Return ONLY valid JSON in this format:
 }
 
 Rules:
-- Score must be 0–100
+- Score 0–100
 - Suggestions ONLY if score < 90
-- No markdown
-- No explanation text
+- NO markdown
+- NO explanation
 
 Resume:
 ${resumeText}
 `;
 
-    // Call Gemini
-    const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=" +
-        env.GEMINI_API_KEY,
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }]
-            }
-          ]
+          contents: [{ parts: [{ text: prompt }] }]
         })
       }
     );
 
-    if (!geminiResponse.ok) {
-      const err = await geminiResponse.text();
-      return new Response(
-        JSON.stringify({ error: "Gemini API failed", details: err }),
-        { status: 500 }
-      );
-    }
+    const geminiData = await geminiRes.json();
+    const output =
+      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
-    const geminiData = await geminiResponse.json();
-    const text =
-      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) {
-      return new Response(
-        JSON.stringify({ error: "Empty response from Gemini" }),
-        { status: 500 }
-      );
-    }
-
-    return new Response(text, {
+    return new Response(output, {
       status: 200,
-      headers: { "Content-Type": "application/json" }
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
     });
 
   } catch (err) {
     return new Response(
-      JSON.stringify({
-        error: "ATS function crashed",
-        details: err.message
-      }),
+      JSON.stringify({ error: "ATS failed", details: err.message }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" }
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
       }
     );
   }
