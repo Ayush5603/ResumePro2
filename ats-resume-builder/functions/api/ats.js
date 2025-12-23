@@ -1,46 +1,23 @@
-// Cloudflare Pages Function: /api/ats
-
-export async function onRequest(context) {
-  const { request, env } = context;
-
-  /* ================= CORS ================= */
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": "application/json"
-  };
-
-  // Handle CORS preflight
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
-
-  // Allow ONLY POST
-  if (request.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Method Not Allowed" }),
-      { status: 405, headers: corsHeaders }
-    );
-  }
-
+export async function onRequestPost({ request, env }) {
   try {
-    /* ================= READ BODY ================= */
-    const body = await request.json();
-    const resumeText = body.resumeText;
+    // Parse body
+    const { resumeText } = await request.json();
 
     if (!resumeText || resumeText.trim().length < 100) {
       return new Response(
-        JSON.stringify({ error: "Resume text is too short or empty" }),
-        { status: 400, headers: corsHeaders }
+        JSON.stringify({ error: "Resume text too short or empty" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        }
       );
     }
 
-    /* ================= PROMPT ================= */
+    // Gemini prompt
     const prompt = `
 You are an Applicant Tracking System (ATS).
 
-Analyze the resume and return ONLY valid JSON in this format:
+Return ONLY valid JSON in this format:
 
 {
   "ats_score": number,
@@ -50,51 +27,66 @@ Analyze the resume and return ONLY valid JSON in this format:
 }
 
 Rules:
-- Score from 0 to 100
+- Score must be 0–100
 - Suggestions ONLY if score < 90
-- No explanations
 - No markdown
-- Return raw JSON only
+- No explanation text
 
 Resume:
 ${resumeText}
 `;
 
-    /* ================= GEMINI API ================= */
-    const geminiRes = await fetch(
-      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" +
+    // Call Gemini
+    const geminiResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=" +
         env.GEMINI_API_KEY,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
+          contents: [
+            {
+              parts: [{ text: prompt }]
+            }
+          ]
         })
       }
     );
 
-    const geminiData = await geminiRes.json();
-
-    const resultText =
-      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!resultText) {
-      throw new Error("Empty Gemini response");
+    if (!geminiResponse.ok) {
+      const err = await geminiResponse.text();
+      return new Response(
+        JSON.stringify({ error: "Gemini API failed", details: err }),
+        { status: 500 }
+      );
     }
 
-    /* ================= SUCCESS ================= */
-    return new Response(resultText, {
+    const geminiData = await geminiResponse.json();
+    const text =
+      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      return new Response(
+        JSON.stringify({ error: "Empty response from Gemini" }),
+        { status: 500 }
+      );
+    }
+
+    return new Response(text, {
       status: 200,
-      headers: corsHeaders
+      headers: { "Content-Type": "application/json" }
     });
 
   } catch (err) {
     return new Response(
       JSON.stringify({
-        error: "ATS analysis failed",
+        error: "ATS function crashed",
         details: err.message
       }),
-      { status: 500, headers: corsHeaders }
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      }
     );
   }
 }
