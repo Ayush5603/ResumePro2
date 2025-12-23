@@ -1,40 +1,27 @@
-// ================= LOAD PDF.JS ================= //
+// ===== LOAD PDF.JS =====
 const pdfScript = document.createElement("script");
 pdfScript.src =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
-pdfScript.onload = () => {
-  console.log("PDF.js loaded");
-};
 document.head.appendChild(pdfScript);
 
-// ================= PDF TEXT EXTRACTION ================= //
+// ===== EXTRACT PDF TEXT =====
 async function extractTextFromPDF(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
 
     reader.onload = async () => {
       try {
-        if (!window.pdfjsLib) {
-          console.error("pdfjsLib not loaded");
-          resolve("");
-          return;
-        }
-
         const pdfData = new Uint8Array(reader.result);
         const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
 
-        let fullText = "";
-
+        let text = "";
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          const pageText = content.items.map((item) => item.str).join(" ");
-          fullText += pageText + "\n";
+          text += content.items.map((it) => it.str).join(" ") + "\n";
         }
-
-        resolve(fullText);
-      } catch (err) {
-        console.error("PDF Extraction Error:", err);
+        resolve(text);
+      } catch {
         resolve("");
       }
     };
@@ -43,85 +30,56 @@ async function extractTextFromPDF(file) {
   });
 }
 
-// ================= ATS BUTTON HANDLER ================= //
+// ===== ATS BUTTON =====
 document.querySelector(".ats-btn").addEventListener("click", async () => {
-  console.log("BTN CLICKED!");
-
-  const fileInput = document.getElementById("resumeFile");
-  const file = fileInput?.files?.[0];
-
+  const file = document.getElementById("resumeFile").files[0];
   if (!file) {
-    alert("Please upload a resume PDF.");
+    alert("Upload resume PDF");
     return;
   }
 
-  console.log("Extracting PDF text...");
   const resumeText = await extractTextFromPDF(file);
-
-  console.log("Extracted text preview:", resumeText.slice(0, 200));
-
-  if (!resumeText || resumeText.trim().length < 100) {
-    alert("Resume text is too short or unreadable.");
+  if (!resumeText || resumeText.length < 100) {
+    alert("Could not read resume text");
     return;
   }
-
-  console.log("Calling Cloudflare ATS API...");
 
   let response;
   try {
-    response = await fetch("/api/ats", {
+    response = await fetch(`${window.location.origin}/api/ats`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resumeText })
     });
-  } catch (networkError) {
-    console.error("NETWORK ERROR:", networkError);
-    alert("Network error while calling ATS service.");
+  } catch {
+    alert("Network error");
     return;
   }
-
-  console.log("RAW RESPONSE:", response.status);
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error("API ERROR:", response.status, errorText);
-    alert("ATS server error. Check console.");
+    alert("ATS server error");
     return;
   }
 
-  let data;
-  try {
-    data = await response.json();
-  } catch (jsonError) {
-    console.error("JSON PARSE ERROR:", jsonError);
-    alert("Invalid response from ATS server.");
-    return;
-  }
+  const data = await response.json();
 
-  console.log("ATS RESULT:", data);
-
-  // ================= UI UPDATE ================= //
+  // ===== UI UPDATE =====
   const scoreBox = document.querySelector(".score");
-  const suggestionList = document.querySelector(".suggestion-list");
+  const list = document.querySelector(".suggestion-list");
 
   scoreBox.textContent = data.ats_score ?? 0;
+  scoreBox.style.color =
+    data.ats_score >= 90 ? "green" :
+    data.ats_score >= 70 ? "orange" : "red";
 
-  if (data.ats_score >= 90) scoreBox.style.color = "green";
-  else if (data.ats_score >= 70) scoreBox.style.color = "orange";
-  else scoreBox.style.color = "red";
-
-  suggestionList.innerHTML = "";
-
-  if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-    data.suggestions.forEach((s) => {
+  list.innerHTML = "";
+  if (Array.isArray(data.suggestions) && data.suggestions.length) {
+    data.suggestions.forEach(s => {
       const li = document.createElement("li");
       li.textContent = s;
-      suggestionList.appendChild(li);
+      list.appendChild(li);
     });
   } else {
-    suggestionList.innerHTML =
-      "<li>No suggestions returned. Resume looks strong.</li>";
+    list.innerHTML = "<li>No suggestions</li>";
   }
 });
