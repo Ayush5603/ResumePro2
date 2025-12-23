@@ -1,39 +1,46 @@
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type"
-};
+// Cloudflare Pages Function: /api/ats
 
-// ✅ Handle CORS preflight
-export async function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders
-  });
-}
+export async function onRequest(context) {
+  const { request, env } = context;
 
-// ✅ Handle POST request
-export async function onRequestPost({ request, env }) {
+  /* ================= CORS ================= */
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Content-Type": "application/json"
+  };
+
+  // Handle CORS preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  // Allow ONLY POST
+  if (request.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method Not Allowed" }),
+      { status: 405, headers: corsHeaders }
+    );
+  }
+
   try {
-    const { resumeText } = await request.json();
+    /* ================= READ BODY ================= */
+    const body = await request.json();
+    const resumeText = body.resumeText;
 
     if (!resumeText || resumeText.trim().length < 100) {
       return new Response(
         JSON.stringify({ error: "Resume text is too short or empty" }),
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders
-          }
-        }
+        { status: 400, headers: corsHeaders }
       );
     }
 
+    /* ================= PROMPT ================= */
     const prompt = `
 You are an Applicant Tracking System (ATS).
 
-Return ONLY valid JSON (no markdown, no explanation):
+Analyze the resume and return ONLY valid JSON in this format:
 
 {
   "ats_score": number,
@@ -43,15 +50,19 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 
 Rules:
-- Score 0–100
+- Score from 0 to 100
 - Suggestions ONLY if score < 90
+- No explanations
+- No markdown
+- Return raw JSON only
 
 Resume:
 ${resumeText}
 `;
 
-    const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
+    /* ================= GEMINI API ================= */
+    const geminiRes = await fetch(
+      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" +
         env.GEMINI_API_KEY,
       {
         method: "POST",
@@ -62,28 +73,28 @@ ${resumeText}
       }
     );
 
-    const geminiData = await geminiResponse.json();
-    const rawText =
+    const geminiData = await geminiRes.json();
+
+    const resultText =
       geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    return new Response(rawText, {
+    if (!resultText) {
+      throw new Error("Empty Gemini response");
+    }
+
+    /* ================= SUCCESS ================= */
+    return new Response(resultText, {
       status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        ...corsHeaders
-      }
+      headers: corsHeaders
     });
 
-  } catch (error) {
+  } catch (err) {
     return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders
-        }
-      }
+      JSON.stringify({
+        error: "ATS analysis failed",
+        details: err.message
+      }),
+      { status: 500, headers: corsHeaders }
     );
   }
 }
