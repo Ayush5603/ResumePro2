@@ -1,27 +1,50 @@
-export async function onRequestPost({ request, env }) {
-  try {
-    // Read request body
-    const body = await request.json();
-    const resumeText = body.resumeText;
+export default {
+  async fetch(request, env) {
 
-    if (!resumeText || resumeText.trim().length === 0) {
+    // ✅ Allow CORS + preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+    }
+
+    if (request.method !== "POST") {
       return new Response(
-        JSON.stringify({ error: "Resume text is empty" }),
+        JSON.stringify({ error: "Only POST allowed" }),
         {
-          status: 400,
-          headers: { "Content-Type": "application/json" }
+          status: 405,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
         }
       );
     }
 
-    // Gemini API Key from Cloudflare Environment Variable
-    const apiKey = env.GEMINI_API_KEY;
+    try {
+      const { resumeText } = await request.json();
 
-    const prompt = `
-You are an ATS (Applicant Tracking System) resume analyzer.
+      if (!resumeText || resumeText.length < 100) {
+        return new Response(
+          JSON.stringify({ error: "Resume text too short" }),
+          {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      }
 
-Analyze the resume text below and respond ONLY with valid JSON in this format:
+      const prompt = `
+You are an ATS (Applicant Tracking System).
 
+Return ONLY valid JSON in this exact format:
 {
   "ats_score": number,
   "strengths": ["..."],
@@ -30,56 +53,50 @@ Analyze the resume text below and respond ONLY with valid JSON in this format:
 }
 
 Rules:
-- ats_score must be between 0 and 100
-- strengths, weaknesses, suggestions must be arrays
-- If score >= 90, suggestions array can be empty
+- Score from 0–100
+- Suggestions ONLY if score < 90
+- No markdown
+- No explanation text
 
-Resume Text:
+Resume:
 ${resumeText}
 `;
 
-    // Call Gemini API
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
+      const geminiRes = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" +
+          env.GEMINI_API_KEY,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+        }
+      );
+
+      const geminiData = await geminiRes.json();
+      const text =
+        geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+      return new Response(text, {
+        status: 200,
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
         },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }]
-            }
-          ]
-        })
-      }
-    );
+      });
 
-    const geminiData = await geminiResponse.json();
-
-    // Extract text response safely
-    let text =
-      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-    // Remove markdown if Gemini adds it
-    text = text.replace(/```json|```/g, "").trim();
-
-    return new Response(text, {
-      status: 200,
-      headers: { "Content-Type": "application/json" }
-    });
-
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: "Server error",
-        message: error.message
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
-  }
-}
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: "ATS failed", details: err.message }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+  },
+};
