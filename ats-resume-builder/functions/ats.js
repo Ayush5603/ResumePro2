@@ -1,29 +1,27 @@
 export default {
   async fetch(request, env) {
-    try {
-      // Read incoming JSON
-      const body = await request.json();
-      const resumeText = body.resumeText || "";
+    // Allow only POST requests
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
 
-      if (!resumeText.trim()) {
+    try {
+      // Read request body
+      const body = await request.json();
+      const resumeText = body.resumeText;
+
+      if (!resumeText || resumeText.trim().length < 100) {
         return new Response(
-          JSON.stringify({ error: "No resume text received" }),
-          { status: 400 }
+          JSON.stringify({ error: "Resume text is too short or empty" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      // Gemini API key from Cloudflare Environment Variable
-      const apiKey = env.GEMINI_API_KEY;
-
-      const url =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" +
-        apiKey;
-
-      // AI Prompt
+      // Prompt for Gemini
       const prompt = `
-You are an ATS (Applicant Tracking System) resume analyzer.
+You are an Applicant Tracking System (ATS).
 
-Analyze the following resume text and return only valid JSON in this format:
+Analyze the resume and return ONLY valid JSON in this format:
 
 {
   "ats_score": number,
@@ -32,47 +30,56 @@ Analyze the following resume text and return only valid JSON in this format:
   "suggestions": ["..."]
 }
 
+Rules:
+- Score from 0 to 100
+- Give suggestions ONLY if score < 90
+- Do NOT add any explanation text
+- Do NOT wrap JSON in markdown
+
 Resume:
 ${resumeText}
 `;
 
       // Call Gemini API
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }],
-            },
-          ],
-        }),
-      });
+      const geminiResponse = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" +
+          env.GEMINI_API_KEY,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: prompt }]
+              }
+            ]
+          })
+        }
+      );
 
-      const result = await response.json();
+      const geminiData = await geminiResponse.json();
 
-      // Extract text returned by Gemini
-      const textResponse =
-        result?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      const rawText =
+        geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
-      // Clean JSON (sometimes Gemini adds ```json)
-      const cleaned = textResponse
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-
-      return new Response(cleaned, {
+      // Return Gemini response directly
+      return new Response(rawText, {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json"
+        }
       });
-    } catch (err) {
+
+    } catch (error) {
       return new Response(
         JSON.stringify({
-          error: "Server error",
-          message: err.message,
+          error: "ATS analysis failed",
+          details: error.message
         }),
-        { status: 500 }
+        { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
-  },
+  }
 };
