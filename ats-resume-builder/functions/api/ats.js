@@ -1,37 +1,36 @@
 export async function onRequest(context) {
-  const { request, env } = context;
+  const request = context.request;
+  const env = context.env;
 
-  // ✅ Handle CORS preflight (THIS WAS MISSING)
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      }
+  // 🔒 Explicit method gate
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: { "Allow": "POST" }
     });
   }
 
-  // ✅ Allow ONLY POST after preflight
-  if (request.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Invalid JSON body" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
   }
 
-  try {
-    const { resumeText } = await request.json();
+  const resumeText = body.resumeText;
 
-    if (!resumeText || resumeText.trim().length < 100) {
-      return new Response(
-        JSON.stringify({ error: "Resume text too short" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
+  if (!resumeText || resumeText.length < 100) {
+    return new Response(
+      JSON.stringify({ error: "Resume text too short" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
-    const prompt = `
-Return ONLY valid JSON.
-No markdown. No explanation.
-
+  const prompt = `
+Return ONLY JSON:
 {
   "ats_score": number,
   "strengths": string[],
@@ -43,32 +42,30 @@ Resume:
 ${resumeText}
 `;
 
-    const aiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      }
-    );
+  const geminiRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    }
+  );
 
-    const aiData = await aiResponse.json();
-    const text =
-      aiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  const geminiJson = await geminiRes.json();
+  const output =
+    geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    return new Response(text, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
-  } catch (err) {
+  if (!output) {
     return new Response(
-      JSON.stringify({ error: "ATS failure", details: err.message }),
+      JSON.stringify({ error: "Empty AI response" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
+
+  return new Response(output, {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
 }
