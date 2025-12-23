@@ -1,19 +1,4 @@
-export const onRequest = async ({ request, env }) => {
-  // Allow CORS + preflight
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      }
-    });
-  }
-
-  if (request.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
-
+export async function onRequestPost({ request, env }) {
   try {
     const { resumeText } = await request.json();
 
@@ -64,7 +49,6 @@ ${resumeText}
     );
 
     const geminiData = await geminiRes.json();
-
     const text =
       geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
@@ -91,4 +75,4 @@ ${resumeText}
       }
     );
   }
-};
+}
