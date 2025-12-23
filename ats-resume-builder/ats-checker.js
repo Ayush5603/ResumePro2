@@ -63,7 +63,7 @@ document.querySelector(".ats-btn").addEventListener("click", async () => {
 
     let response;
     try {
-        response = await fetch("/.netlify/functions/ats", {
+        response = await fetch("/api/ats", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ resumeText })
@@ -106,4 +106,5 @@ document.querySelector(".ats-btn").addEventListener("click", async () => {
         suggestionList.innerHTML = "<li>No suggestions returned.</li>";
     }
 });
+
 
