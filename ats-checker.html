@@ -1,0 +1,64 @@
+<link rel="stylesheet" href="ats-checker.css">
+
+
+<body>
+
+  <!-- NAVBAR -->
+  <header class="navbar">
+    <div class="logo">Ayush Dhamane</div>
+    <nav>
+      <a href="index.html#home">Home</a>
+      <a href="index.html#resume">Resume Builder</a>
+      <a href="ats-checker.html">ATS Checker</a>
+    </nav>
+  </header>
+
+  <!-- HEADER SECTION -->
+  <section class="ats-header scroll-animate">
+    <h1>ATS Score Checker</h1>
+    <p>The ATS Checker is still under Development and Soon will be in Service.</p>
+  </section>
+
+  <!-- UPLOAD SECTION -->
+  <section class="upload-box scroll-animate">
+
+    <h2>Upload Resume & Job Description</h2>
+<br><br>
+    <label class="upload-title">Upload Resume (PDF):</label>
+    
+    <input type="file" id="resumeFile" accept="application/pdf">
+<br>
+    
+
+    <button class="ats-btn">Check ATS Score</button>
+  </section>
+
+  <!-- RESULTS SECTION -->
+  <section id="resultBox" class="result-box scroll-animate">
+    <h3>Your ATS Score</h3>
+    <div class="score">--</div>
+
+    <h3>Suggestions</h3>
+    <ul class="suggestion-list">
+      <li>Your suggestions will appear here after analysis.</li>
+    </ul>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    Developed by <strong>Ayush Dhamane</strong> © 2025
+  </footer>
+
+<script>
+const observer = new IntersectionObserver(entries => {
+   entries.forEach(e => {
+       if (e.isIntersecting) e.target.classList.add('show');
+   });
+});
+
+document.querySelectorAll('.scroll-animate').forEach(el => observer.observe(el));
+</script>
+<script src="ats-checker.js"></script>
+
+</body>
+
