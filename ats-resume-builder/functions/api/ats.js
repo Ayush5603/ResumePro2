@@ -1,15 +1,10 @@
-export async function onRequest({ request, env }) {
-  // Allow ONLY POST
-  if (request.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
-
+export async function onRequest({ request, env }) {export async function onRequestPost({ request, env }) {
   try {
     const { resumeText } = await request.json();
 
     if (!resumeText || resumeText.trim().length < 100) {
       return new Response(
-        JSON.stringify({ error: "Resume text too short or empty" }),
+        JSON.stringify({ error: "Resume text too short" }),
         {
           status: 400,
           headers: { "Content-Type": "application/json" }
@@ -28,11 +23,6 @@ Return ONLY valid JSON:
   "suggestions": ["..."]
 }
 
-Rules:
-- Score must be between 0 and 100
-- No markdown
-- No explanation text
-
 Resume:
 ${resumeText}
 `;
@@ -41,31 +31,19 @@ ${resumeText}
       `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }]
         })
       }
     );
 
-    if (!geminiResponse.ok) {
-      const err = await geminiResponse.text();
-      return new Response(
-        JSON.stringify({ error: "Gemini API failed", details: err }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
-    }
-
     const data = await geminiResponse.json();
-    const text =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
 
-    return new Response(text, {
+    const result =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+    return new Response(result, {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
@@ -83,3 +61,5 @@ ${resumeText}
     );
   }
 }
+
+
