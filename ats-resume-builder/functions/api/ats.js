@@ -1,34 +1,50 @@
-export async function onRequest({ request, env }) {export async function onRequestPost({ request, env }) {
+export async function onRequest(context) {
+  const { request, env } = context;
+
+  // ✅ Handle CORS preflight (THIS WAS MISSING)
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    });
+  }
+
+  // ✅ Allow ONLY POST after preflight
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
   try {
     const { resumeText } = await request.json();
 
     if (!resumeText || resumeText.trim().length < 100) {
       return new Response(
         JSON.stringify({ error: "Resume text too short" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" }
-        }
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
     const prompt = `
-You are an Applicant Tracking System (ATS).
+Return ONLY valid JSON.
+No markdown. No explanation.
 
-Return ONLY valid JSON:
 {
   "ats_score": number,
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "suggestions": ["..."]
+  "strengths": string[],
+  "weaknesses": string[],
+  "suggestions": string[]
 }
 
 Resume:
 ${resumeText}
 `;
 
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+    const aiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,28 +54,21 @@ ${resumeText}
       }
     );
 
-    const data = await geminiResponse.json();
+    const aiData = await aiResponse.json();
+    const text =
+      aiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
 
-    const result =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-    return new Response(result, {
+    return new Response(text, {
       status: 200,
-      headers: { "Content-Type": "application/json" }
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
     });
-
   } catch (err) {
     return new Response(
-      JSON.stringify({
-        error: "ATS server error",
-        details: err.message
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      }
+      JSON.stringify({ error: "ATS failure", details: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
-
-
