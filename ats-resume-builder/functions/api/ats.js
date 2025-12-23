@@ -1,10 +1,7 @@
-export async function onRequest(context) {
-  const { request, env } = context;
-
-  // ✅ Handle CORS preflight
+export const onRequest = async ({ request, env }) => {
+  // Allow CORS + preflight
   if (request.method === "OPTIONS") {
     return new Response(null, {
-      status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -13,14 +10,8 @@ export async function onRequest(context) {
     });
   }
 
-  // ❌ Allow ONLY POST
   if (request.method !== "POST") {
-    return new Response("Method Not Allowed", {
-      status: 405,
-      headers: {
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
+    return new Response("Method Not Allowed", { status: 405 });
   }
 
   try {
@@ -40,7 +31,7 @@ export async function onRequest(context) {
     }
 
     const prompt = `
-You are an ATS (Applicant Tracking System).
+You are an Applicant Tracking System (ATS).
 
 Return ONLY valid JSON in this format:
 
@@ -52,17 +43,17 @@ Return ONLY valid JSON in this format:
 }
 
 Rules:
-- Score 0–100
-- Suggestions ONLY if score < 90
-- NO markdown
-- NO explanation
+- Score from 0 to 100
+- Suggestions only if score < 90
+- No markdown
+- No extra text
 
 Resume:
 ${resumeText}
 `;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,20 +64,24 @@ ${resumeText}
     );
 
     const geminiData = await geminiRes.json();
-    const output =
-      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
-    return new Response(output, {
+    const text =
+      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      throw new Error("Empty Gemini response");
+    }
+
+    return new Response(text, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*"
       }
     });
-
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: "ATS failed", details: err.message }),
+      JSON.stringify({ error: err.message }),
       {
         status: 500,
         headers: {
@@ -96,4 +91,4 @@ ${resumeText}
       }
     );
   }
-}
+};
